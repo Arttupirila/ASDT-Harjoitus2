@@ -8,512 +8,425 @@
 /* Lisäohjeita, vinkkejä ja apuja löytyy koodin joukosta */
 /* OPISKELIJA: merkityt kohdat eritoten kannattaa katsoa huolella */
 
+
+
+/* PERUSASIAT SUORITETTU (8p?) */
+
+
+
+
+
 //peruskirjastot mitä tarvii aika lailla aina kehitystyössä
 //OPISKELIJA: lisää tarvitsemasi peruskirjastot
 #include <iostream>
 #include <vector>
 #include <string>
+#include <cstdlib>
+#include <ctime>
 
 //rinnakaisuuden peruskirjastot
 //OPISKLEIJA: lisää tarvittaessa lisää kirjastoja, muista käyttää -pthread lippua käännöksessä ja tarvittaessa -lrt lippua myös
 //Huom! Rinnakkaisuusasioista on eri versioita (c++, POSIX/pthread, SystemV)
 //Kaikkien käyttö on sallittua
 #include <sys/shm.h> //jaetun muistin kirjasto: shmget(), shmmat()
+#include <sys/sem.h> // System V Semaphoret (KOHTA 3)
 #include <fcntl.h> //S_IRUSR | S_IWUSR määrittelyt esim jaettua muistia varten
 #include <unistd.h> //esim fork() määrittely ja muut prosessimäärittelyt
-#include <sys/wait.h>
-#include <semaphore.h>
-#include <pthread.h> //pthread perussäiemäärittelyt
+#include <sys/wait.h> // waitpid
+#include <pthread.h> // POSIX Säikeet (KOHTA 2 ja 4)
+
 using namespace std;
 
-//kaikkialla tarvittavat tunnisteet  määritellään globaalilla alueella
-//OPISKELIJA: muistele harjoituksista miten eri asiat määriteltiin
-//OPISKELIJA: tehtäväsi on sijoittaa itse labyrinttikin jaettuun muistialueeseen ja käyttää sitä sieltä
-//->eli:labyrintin käyttö globaalilta alueelta jaetun muistin käyttöön
-//vinkki: kannattaa määritellä pointteri nimeltä labyrintti kaksiuloitteiseen taulukkoon jolloin nykytoteutus toimii sellaisenaan
-//parent/main alustaa jaettun muistin (eli kirjoittaa sinne) nuo labyrintin alkiot
-//poista labyrintti kokonaan globaalilta alueelta, ohjelman pitäisi toimia 
-//mieti harjoituksista opitun perusteella paljonko labyrintti vähintään tarvitsee jaettua muistia
-//tee kaikki ratkaisut niin että ohjelma toimii millä tahansa labyrintilla
+// Globaalit määrittelyt
+#define ROTTIEN_LKM 3
+#define KORKEUS 7
+#define LEVEYS 7
 
-//definet voi jättää globaalille alueelle, ne on sitten tiedossa koko tiedostossa
-#define KORKEUS 100 //rivien määrä alla
-#define LEVEYS 100 //sarakkaiden määrä alla
-int labyrintti[KORKEUS][LEVEYS] = {
-    {1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-    {1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,2,0,2,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,2,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,2,0,0,1,0,0,0,1,0,0,2,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,1,1},
-    {1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,1},
-    {1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,1,0,1,2,0,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,1,2,0,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0,1,0,0,2,0,0,0,0,0,0,1,0,0,0,0,2,1,0,0,0,1,0,1,0,1,0,1,0,1,0,0,0,1,1},
-    {1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1},
-    {1,0,0,0,0,0,1,0,1,0,1,0,0,0,1,0,1,0,1,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,0,2,0,0,1,0,0,0,1,2,0,0,1,0,0,0,0,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,0,2,0,0,1,1},
-    {1,1,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,0,1,1,1,1},
-    {1,0,0,0,1,0,1,2,0,0,1,0,1,0,1,0,0,0,1,0,0,0,1,0,1,0,0,0,0,0,1,0,0,2,0,0,1,0,0,2,0,0,1,0,0,2,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,1,0,1,0,1,0,0,0,1,0,0,2,0,2,0,0,0,0,1,0,1,0,0,2,0,0,0,0,1,0,0,0,1,1},
-    {1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1},
-    {1,0,1,0,0,0,1,0,1,0,0,2,0,0,0,0,1,0,0,0,0,0,0,2,0,2,0,0,1,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,0,2,1,0,0,0,1,0,1,0,0,0,1,0,0,0,1,0,1,0,0,2,0,0,1,0,1,0,0,0,0,0,1,0,1,0,1,0,0,0,0,0,1,0,0,2,0,0,1,0,1,0,0,0,1,1},
-    {1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,1},
-    {1,0,0,0,0,0,1,0,1,0,1,0,0,0,1,0,0,0,0,2,0,0,0,0,0,0,0,2,1,0,0,0,0,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,1,0,1,0,1,0,1,0,0,0,1,0,1,0,0,0,0,0,1,0,0,2,0,0,1,0,0,0,1,0,0,2,1,0,0,0,1,0,0,2,0,0,1,0,0,0,1,0,0,0,1,1},
-    {1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1,1},
-    {1,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,0,2,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,0,2,1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,2,1,0,0,0,1,0,0,2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,1,1},
-    {1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,1},
-    {1,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,2,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,0,0,1,0,1,0,0,2,1,0,0,0,1,0,0,0,1,0,0,2,1,0,0,2,0,2,0,0,1,0,0,0,0,0,1,0,0,0,1,0,1,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,1,0,1,0,1,1},
-    {1,0,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,1},
-    {1,0,1,0,0,2,0,0,1,0,1,0,1,0,1,0,0,0,1,0,0,0,1,0,1,0,1,0,1,0,0,2,0,0,1,2,0,0,1,0,1,0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,1,0,0,2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,0,0,0,0,1,0,1,0,1,0,1,1},
-    {1,0,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,0,1,1},
-    {1,2,0,0,1,0,0,0,0,0,1,2,0,0,0,0,1,0,1,0,0,0,1,0,1,0,1,0,0,2,0,0,1,0,0,0,1,0,0,2,1,0,0,0,1,0,1,0,1,0,0,0,0,0,1,2,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,1,2,0,0,1,0,0,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,1,0,1,1},
-    {1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1},
-    {1,0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0,1,0,1,0,0,0,1,0,1,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,2,0,0,1,0,1,0,0,0,0,0,0,0,1,0,0,2,1,2,0,0,0,0,1,0,1,0,1,1},
-    {1,1,1,0,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,1},
-    {1,0,1,0,1,0,1,0,0,0,0,0,0,2,1,0,1,0,0,2,1,0,0,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,0,0,0,0,1,0,1,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,2,1,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,1,0,0,2,0,0,1,1},
-    {1,0,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1},
-    {1,2,0,0,1,0,0,0,0,2,0,0,0,0,1,0,0,2,1,0,1,0,0,0,1,0,0,0,1,0,1,0,0,2,0,0,1,0,0,2,0,0,1,0,0,0,1,0,0,2,1,0,1,0,0,0,1,0,0,0,1,0,0,0,1,2,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,2,0,0,1,0,0,0,0,2,1,2,0,0,0,0,0,0,1,1},
-    {1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,1},
-    {1,0,1,0,0,2,0,0,1,0,0,0,1,0,0,0,1,0,1,0,1,0,0,2,1,0,0,0,1,0,0,0,1,0,0,2,0,0,0,0,0,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,1,0,1,0,1,0,0,0,1,0,1,1},
-    {1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,0,1,1},
-    {1,0,1,0,0,0,1,0,1,0,0,2,0,0,1,0,0,0,1,2,0,0,1,0,1,0,0,0,0,0,1,0,1,0,1,0,0,2,0,0,1,0,1,0,1,0,0,0,0,2,0,0,1,0,1,0,1,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,1,0,0,2,0,0,1,0,0,0,0,2,1,0,1,0,0,0,1,2,0,0,1,1},
-    {1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,1},
-    {1,0,0,0,1,0,1,0,1,0,0,2,0,0,1,0,0,0,1,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,1,0,1,0,0,0,0,0,0,0,1,0,1,0,0,0,0,2,0,0,1,0,0,2,1,0,1,0,1,0,1,0,0,0,0,0,1,0,1,0,1,0,0,2,1,0,1,0,0,2,1,0,0,0,1,1},
-    {1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,0,1,1},
-    {1,0,0,0,1,2,0,0,1,0,1,0,0,0,0,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,1,0,0,0,1,0,1,0,0,2,0,0,0,0,0,0,1,0,0,2,0,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0,0,0,1,0,0,0,1,0,1,1},
-    {1,0,1,1,1,0,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1},
-    {1,0,1,0,0,0,1,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,1,0,0,2,0,0,0,2,0,0,1,0,0,0,1,0,0,0,0,2,0,0,0,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0,0,0,1,0,0,0,1,0,0,2,0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,1,0,0,0,1,1},
-    {1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,1},
-    {1,0,1,0,0,0,1,0,0,0,0,2,0,0,1,0,0,0,1,0,0,2,1,0,1,0,0,0,0,2,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,2,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,1,0,1,0,1,0,1,0,0,0,0,0,1,0,1,2,0,0,1,0,0,2,0,0,1,0,0,0,1,1},
-    {1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1},
-    {1,2,0,0,1,0,0,0,0,0,1,0,0,0,0,2,0,0,1,0,0,0,1,2,0,0,0,0,1,0,0,0,0,0,0,0,0,2,0,0,1,0,1,0,1,2,0,0,0,0,1,0,1,0,1,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,1,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,1,2,0,0,1,0,0,0,1,1},
-    {1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,1},
-    {1,0,1,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,1,0,0,0,1,0,0,0,1,0,0,2,0,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,1,2,0,0,1,0,0,2,0,0,1,0,0,2,0,0,0,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,1},
-    {1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,1},
-    {1,0,1,0,0,2,1,2,0,0,1,0,1,0,0,0,1,0,0,2,0,0,1,0,0,0,1,0,1,0,0,2,0,0,0,0,1,0,1,2,0,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,2,1,0,1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,2,0,0,1,0,0,0,0,0,1,0,1,0,1,1},
-    {1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,1},
-    {1,0,0,0,1,0,1,0,1,0,0,2,1,0,1,0,0,0,1,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,2,0,0,1,0,1,0,0,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0,0,2,0,0,1,0,0,0,0,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,2,1,1},
-    {1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1,1},
-    {1,0,0,0,0,2,1,0,0,0,1,0,0,0,1,0,0,2,0,0,1,0,0,0,1,0,1,0,0,0,1,0,0,2,1,0,1,0,0,0,1,0,0,0,1,0,1,2,0,0,1,0,0,0,1,0,0,0,1,2,0,0,1,0,0,0,1,0,1,0,1,0,0,2,0,0,0,2,1,0,1,2,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,1},
-    {1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,0,1,1},
-    {1,0,0,0,1,0,1,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0,0,0,0,0,0,0,1,2,0,0,1,0,1,0,1,0,1,0,0,0,1,0,0,0,0,2,1,0,0,0,0,0,1,0,1,2,0,0,0,0,1,0,1,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,2,0,0,1,0,0,0,1,0,0,0,1,0,1,1},
-    {1,0,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,1,1,0,1,1},
-    {1,0,1,0,0,2,1,0,0,0,0,0,1,0,1,0,1,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,1,0,1,0,0,0,1,0,0,2,1,0,0,0,1,0,0,0,1,0,1,0,1,0,0,0,0,0,1,0,0,0,1,0,0,2,1,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,2,0,0,1,0,0,0,1,0,0,0,1,1},
-    {1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,1},
-    {1,0,0,0,1,0,0,0,0,0,0,0,1,0,1,2,0,2,0,0,0,0,0,0,0,0,1,0,0,0,1,0,1,0,0,0,1,0,0,0,1,0,1,0,1,0,1,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,2,0,0,0,0,1,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,1,0,1,0,1,0,0,0,1,0,1,0,1,0,1,1},
-    {1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,0,1,0,1,1},
-    {1,0,1,0,0,0,0,0,0,0,0,0,1,0,1,0,1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,1,0,0,2,1,0,1,0,1,2,0,0,1,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,1,0,1,0,1,0,1,0,0,2,0,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,1},
-    {1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,1},
-    {1,0,0,0,1,0,0,2,0,0,0,0,1,0,1,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,1,2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,0,2,1,0,1,0,1,1},
-    {1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1},
-    {1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,2,0,0,1,0,0,0,0,0,0,0,1,0,1,0,0,2,1,0,0,2,0,2,0,2,0,0,0,0,0,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,0,2,0,0,0,0,1,0,1,2,0,0,0,0,1,0,1,0,0,2,0,0,1,0,0,0,1,2,0,0,1,0,0,2,0,0,1,0,1,1},
-    {1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,0,1,1},
-    {1,0,1,0,0,0,1,0,1,0,1,0,1,0,0,0,1,0,0,0,1,0,0,0,0,0,0,2,1,0,1,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,0,0,1,2,0,0,1,0,1,0,1,0,0,0,1,2,0,0,1,0,0,0,1,0,0,0,1,0,1,2,0,0,1,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0,0,2,1,1},
-    {1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1},
-    {1,2,0,0,1,0,1,2,0,2,0,0,1,0,1,0,0,0,0,2,0,0,1,0,0,0,1,0,1,0,0,0,1,0,0,2,1,0,0,0,1,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,1,0,0,2,1,0,1,0,1,0,1,1},
-    {1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,0,1,0,1,1},
-    {1,0,0,0,1,0,0,2,0,0,1,0,1,0,0,2,0,0,1,0,0,0,0,0,1,0,0,0,0,2,0,0,1,0,1,2,0,0,0,0,0,2,0,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,1,2,0,0,1,0,1,0,1,0,0,0,0,0,1,0,0,2,0,0,0,0,0,0,1,0,0,0,1,0,1,0,1,0,1,0,1,1},
-    {1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,0,1,1},
-    {1,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,2,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,0,2,0,0,1,0,1,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,0,0,1,0,0,0,0,0,0,2,0,0,1,0,0,0,1,0,0,0,1,0,1,1},
-    {1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,1},
-    {1,0,1,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,1,0,1,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0,1,0,1,0,0,2,0,0,1,0,0,0,1,0,1,0,1,0,0,0,0,0,0,2,0,0,0,0,1,0,1,0,0,0,0,0,1,0,0,0,1,1},
-    {1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,1},
-    {1,0,1,0,0,0,1,2,0,0,1,0,0,0,1,0,1,0,1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,2,1,0,0,0,1,0,0,0,1,0,1,0,1,0,1,0,0,0,1,0,0,0,1,0,1,2,0,0,1,0,0,0,0,2,1,0,0,0,0,2,1,0,1,0,0,0,0,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,0,0,1,1},
-    {1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,0,1,0,1,0,1,1,1,1,1,0,1,1},
-    {1,0,1,0,0,2,1,0,0,0,0,0,1,0,0,0,1,0,1,0,1,0,1,0,0,0,0,0,0,0,0,0,1,0,1,0,1,0,0,2,1,0,0,0,1,0,0,2,0,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,1,0,1,0,0,0,1,0,0,2,0,0,1,0,1,1},
-    {1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,1},
-    {1,0,1,0,1,0,1,0,0,2,0,0,0,0,1,0,1,2,0,0,1,2,0,0,1,0,0,2,0,0,0,0,1,0,0,0,1,0,0,2,1,0,0,0,1,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,1,0,1,0,0,0,1,0,0,0,1,2,0,0,1,0,1,0,0,0,1,0,0,0,1,1},
-    {1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,1},
-    {1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,2,0,2,0,0,1,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,1,0,1,0,1,0,0,0,0,0,1,0,1,0,1,0,0,2,0,0,0,0,0,0,1,0,0,2,0,0,0,0,0,0,0,2,1,0,1,0,0,2,1,0,1,0,1,0,0,0,1,0,0,0,1,0,1,0,1,1},
-    {1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,1,1,1,1,0,1,0,1,0,1,1},
-    {1,2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,1,0,1,0,0,0,1,0,0,0,1,0,0,0,0,2,1,0,0,0,0,0,1,0,1,0,1,0,0,0,0,0,0,0,1,0,0,0,0,2,1,0,0,2,1,0,0,0,0,0,1,0,1,2,0,0,1,1},
-    {1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,1},
-    {1,0,1,2,0,0,1,0,1,0,0,0,1,0,1,0,1,0,0,0,0,2,1,0,1,0,1,0,1,0,0,2,1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,1,0,0,0,0,0,1,0,0,0,1,2,0,0,0,0,0,0,1,0,0,2,0,2,0,0,0,0,1,0,0,0,1,0,1,0,1,0,1,0,0,0,1,0,1,0,1,0,0,0,1,1},
-    {1,1,1,0,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,1},
-    {1,0,0,0,1,0,1,0,1,0,0,2,1,0,0,2,0,0,0,0,1,0,1,0,1,0,1,2,0,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,1,0,1,0,0,0,0,0,1,0,0,0,0,0,0,2,0,0,1,0,1,0,0,0,1,0,0,0,1,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,1,0,1,1},
-    {1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1},
-    {1,2,0,0,1,0,0,0,1,0,1,0,1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,2,1,2,0,0,0,2,0,0,0,0,1,0,0,0,0,0,1,2,0,2,0,0,0,0,1,0,0,2,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0,0,0,1,0,0,2,0,0,0,0,0,2,0,0,0,0,0,0,1,2,0,2,1,1},
-    {1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,0,1,1},
-    {1,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0,1,0,1,0,0,0,1,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,1,1},
-    {1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1,0,1,0,1,1},
-    {1,0,1,0,1,0,0,0,1,0,1,0,0,0,0,2,0,2,0,0,1,0,1,0,1,0,0,0,0,2,1,0,0,0,0,0,1,0,1,0,0,0,1,0,0,2,0,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,2,1,0,0,0,1,0,0,0,1,2,0,0,1,0,1,0,1,0,0,0,1,0,1,1},
-    {1,0,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1,1},
-    {1,0,1,0,1,0,1,0,0,0,1,0,0,0,0,0,1,0,1,0,0,0,1,2,0,0,1,0,0,0,1,0,0,0,0,0,0,2,0,2,0,0,1,0,0,0,1,0,0,0,0,2,0,0,1,0,0,2,0,0,1,0,0,0,0,2,0,0,1,0,0,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,1,0,1,0,1,0,1,0,0,0,0,0,1,1},
-    {1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,0,1,1},
-    {1,0,1,0,1,0,1,0,1,0,0,2,1,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,1,2,0,0,0,0,1,2,0,0,1,0,0,0,1,0,0,0,0,2,1,0,0,2,0,0,1,0,0,2,0,0,1,0,1,1},
-    {1,0,1,0,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,1},
-    {1,0,1,0,1,0,1,0,0,0,0,0,1,2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0,0,2,0,2,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,1,0,1,0,0,0,0,0,1,0,0,0,1,1},
-    {1,0,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,0,1,1},
-    {1,0,0,2,0,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,2,0,0,0,2,0,0,0,0,0,0,1,0,0,2,0,0,0,0,0,0,1,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,2,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,2,1,1},
-    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1},
-    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,4,1,1},
+// Labyrintin osien arvoja
+#define WALL 1
+#define PATH 0
+#define START 2
+#define EXIT 4
+#define VISITED_P 5 // Käytetään prosesseissa (KOHTA 1)
+#define VISITED_T 6 // Käytetään säikeissä (KOHTA 2)
+
+// Liikkumissuunnat
+enum Suunta { UP, DOWN, LEFT, RIGHT, NONE };
+
+// Sijainti-rakenne
+struct Coord {
+    int ykoord;
+    int xkoord;
 };
 
-//apuja: voit testata ratkaisujasi myös alla olevalla yksinkertaisemmalla labyrintilla 
-//#define KORKEUS 7
-//#define LEVEYS 7
-/*int labyrintti[KORKEUS][LEVEYS] = {
-                        {1,1,1,1,1,1,1},
-                        {1,0,1,0,1,0,4},
-                        {1,0,1,0,1,0,1},
-                        {1,2,0,2,0,2,1},
-                        {1,0,1,0,1,0,1},
-                        {1,0,1,0,1,0,1},
-                        {1,1,1,3,1,1,1}};
-*/
-
-//karttasijainnin tallettamiseen käytettävä rakenne, luotaessa alustuu vasempaan alakulmaan
-//HUOM! ykoordinaatti on peilikuva taulukon rivi-indeksiin
-//PasiM: TODO, voisi yksinkertaistaa että ykoord olisi sama kuin rivi-indeksi
-struct Sijainti {
-    int ykoord {0};
-    int xkoord {0};
+// Reitti-solmu (risteys)
+struct Solmu {
+    Coord sijainti;
+    struct { bool tutkittu; Suunta jatkom; } up, down, left, right;
+    Suunta tulosuunta;
 };
 
-//rotan liikkeen suunnan määrittelyyn käytettävä rakenne
-//huom! suunnat ovat absoluuttisia kuin kompassissa
-//UP -> ykoord++ (yindex--)
-//DOWN -> ykoord-- (yindex++)
-//LEFT -> xkoord--
-//RIGHT -> xkoord++
-//DEFAULT -> suunta tuntematon
-enum LiikkumisSuunta {
-    UP, DOWN, LEFT, RIGHT, DEFAULT
+// Rottakohtainen data
+struct RatData {
+    int id; // Rotan ID
+    // Täydellinen reitti, pidetään vain rotan pinossa (paikallisesti)
+    vector<Solmu> reitti; 
+    Coord rotanSijainti;
+    int liikeCount;
+    // ... mahdollisesti muita rotan paikallisia tilatietoja
 };
 
-//tämän hetken toteutuksessa tämä on tarpeeton rakenne, voisi käyttää rotan omassa kartan ymmärryksen kasvatuksessa
-enum Ristausve {
-    WALL = 1,
-    OPENING = 0
-};
+// **KOHTA 1 & 3: PROSESSIEN GLOBAALIEN MUUTTUJIEN MÄÄRITTELY**
 
-//tämä rakenne on jokaisesta risteyksestä jokaiseen suuntaan omansa
-//VINKKI: tutkituksi merkittyyn/merkittävään suuntaan ei rotta koskaan lähde enää tutkimaan ;)
-struct Suunta {
-    Ristausve jatkom; //tutkituille suunnille tämä on määritelty OPENING arvolle
-    bool tutkittu {false}; //alkuarvona tutkimaton
-};
+// Labyrintti jaettuun muistiin (KOHTA 1)
+int (*labyrintti)[LEVEYS] = nullptr; 
 
-//TÄRKEIN kaikista rakenteista, kertoo miten risteys on opittu juuri kyseisen rotan taholta
-//tutkittavana - arvo kertoo minne suuntaan juuri tämä rotta viimeksi lähtenyt ko risteyksestä tutkimaan
-struct Ristaus {
-    Sijainti kartalla;
-    Suunta up;
-    Suunta down;
-    Suunta left;
-    Suunta right;
-    LiikkumisSuunta tutkittavana = DEFAULT; //alkuarvo, kertoo while-silmukan alussa olevalle risteyskoodille että rotta tuli ensimmäistä kertaa ko risteykseen
-};
+// Sijaintikartta jaettuun muistiin (KOHTA 3)
+int (*sijaintikarttaProsessit)[LEVEYS] = nullptr;
+int semid; // Semaforin ID (KOHTA 3)
 
-//poikkeuksenheittämistä varten, ei käytössä tällä hetkellä
-//PasiM, TODO: poikkeukset
-struct Karttavirhe {
-    int koodi {0};
-    string msg;
-};
+// **KOHTA 2 & 4: SÄIKEIDEN GLOBAALIEN MUUTTUJIEN MÄÄRITTELY**
 
+// Labyrintti globaalissa muistissa (sama muistiavaruus säikeille) (KOHTA 2)
+int labyrinttiSaikeet[KORKEUS][LEVEYS]; 
 
-//tämä on esittely aloitusalgoritmifunktiolle mitä siis kutsutaan oli kyseessä prosessi eli säietoteutus
-//tällä hetkellä palauttaa kyseisen rotan liikkujen määrän labyrintin selvittämiseksi
-//OPISKELIJA: yhtenä mielenkiintoisena haasteena voisi olla liikkujen määrän optimointi rottien yhteistyötä kehittämällä
-int aloitaRotta();
+// Sijaintikartta globaalissa muistissa (sama muistiavaruus säikeille) (KOHTA 4)
+int sijaintikarttaSaikeet[KORKEUS][LEVEYS] = {0}; 
+pthread_mutex_t sijainti_mutex; // Mutex-lukko (KOHTA 4)
 
-//OPISKELIJA: lisää tarvittavat muut funktioesittelyt tähän niin koodin järjestykellä tiedostossa ei ole merkitystä
+// Semaforin P- ja V-operaatioiden apu-rakenne (System V Semaphores)
+struct sembuf P = {0, -1, SEM_UNDO}; // P-operaatio (lukitse)
+struct sembuf V = {0, 1, SEM_UNDO};  // V-operaatio (vapauta)
 
-
-//Rotta-ohjelman algoritmimäärittelyt
-//näitä kutsutaan-oli rinnakkaisuus mitä vain
-//OPISKELIJA: kun siirrät labyrintin jaettuun muistiin, siihen osoittavaa pointteria varmaankin pitää kuljetella niihin funktioihin missä labyrinttia tutkitaan
-//VINKKI: määrittele pointteri niin että olemassa olevissa algoritmeissa oleva koodi toimii sellaisenaan
-
-//etsii kartasta jotain spesifistä, palauttaa sen koordinaatit
-Sijainti etsiKartasta(int kohde){
-    Sijainti kartalla;
-    for (int y = 0; y<KORKEUS ; y++) {
-        for (int x = 0; x<LEVEYS ; x++){
-            if (labyrintti[y][x] == kohde) {
-                kartalla.xkoord = x;
-                kartalla.ykoord = KORKEUS-1-y;
-                return kartalla;
-            }  
-        }
-    }
-    return kartalla;
-}
-
-//etsitään labyrintin aloituskohta, merkitty 3:lla
-Sijainti findBegin(){
-    Sijainti alkusijainti;
-    alkusijainti = etsiKartasta(3);
-    return alkusijainti;
-} 
-
-//TÄRKEÄÄ: reitti on risteyspino - sen muutokset täytyy liikkua tiedonvälityksen mukana, siksi liikkuu viittaus siihen
-//OPISKELIJA: rotan liikkumislogiikkaan ei (välttämättä) tarvitse kajota, ainoastaan päätöksentekoon risteyksiin liittyen
-//OPISKELIJA: väistämislogiikan tekeminen voi olla poikkeus ylläolevaan
-//OHJE: taulukon indeksit ja koordinaatit ovat y-suunnassa peilikuvana
-//eli: ykoordinaatti alkaa alhaalta kasvaa ylöspäin, yindeksi alkaa ylhäältä kasvaa alaspäin
-//OPISKLEIJA: käytä siis labyrinttia jaetusta muistista ja tee tarvittaessa siihen liittyvät muutokset
-
-//tutkitaan mitä nykypaikan yläpuolella on, prevDir kertoo minkä suuntainen oli viimeisin kyseisen rotan liikku
-bool tutkiUp(Sijainti nykysijainti, auto& reitti, LiikkumisSuunta prevDir){
-    int yindex = KORKEUS-1-nykysijainti.ykoord-1;
-    if (yindex < 0) return false; //ulos kartalta - ei mahdollista 
-    if (labyrintti[yindex][nykysijainti.xkoord] == 1) return false; //labyrintin seinä
-    //tulossa uuteen ristaukseen, siihen siirrytään aina silmukan lopuksi nykytoteutuksessa
-    if (labyrintti[yindex][nykysijainti.xkoord] == 2 && prevDir != DOWN) {
-        Ristaus ristaus;
-        ristaus.kartalla.ykoord = nykysijainti.ykoord+1;
-        ristaus.kartalla.xkoord = nykysijainti.xkoord;
-        ristaus.down.tutkittu = true;
-        ristaus.down.jatkom = OPENING;
-        reitti.push_back(ristaus); //lisätään risteys pinon päällimmäiseksi
-// debuggausapuja..:
-//        for (auto rist : reitti){
-//            cout << "Risteys: " << rist.kartalla.ykoord << "," << rist.kartalla.xkoord << endl;
-//        }
-        return true;
-    }
-    return true;
-}
-//..alapuolella
-bool tutkiDown(Sijainti nykysijainti, auto& reitti, LiikkumisSuunta prevDir){
-    int yindex = KORKEUS-1-nykysijainti.ykoord+1;
-    if (yindex > KORKEUS-1) return false; //ulos kartalta - ei mahdollista 
-    if (labyrintti[yindex][nykysijainti.xkoord] == 1) return false;
-    //tulossa uuteen ristaukseen
-    if (labyrintti[yindex][nykysijainti.xkoord] == 2 && prevDir != UP){
-        Ristaus ristaus;
-        ristaus.kartalla.ykoord = nykysijainti.ykoord-1;
-        ristaus.kartalla.xkoord = nykysijainti.xkoord;
-        ristaus.up.tutkittu = true;
-        ristaus.up.jatkom = OPENING;
-        reitti.push_back(ristaus);
-//        for (auto rist : reitti){
-//            cout << "Risteys: " << rist.kartalla.ykoord << "," << rist.kartalla.xkoord << endl;
-//        }
-        return true;
-    }
-    return true;
-}
-
-//..vasemmalla
-bool tutkiLeft(Sijainti nykysijainti, auto& reitti, LiikkumisSuunta prevDir){
-    int yindex = KORKEUS-1-nykysijainti.ykoord;
-    int xindex = nykysijainti.xkoord-1;
-    if (xindex < 0) return false; //ulos kartalta - ei mahdollista
-    if (labyrintti[yindex][xindex] == 1) return false;
-    //tulossa uuteen ristaukseen
-    if (labyrintti[yindex][xindex] == 2 && prevDir != RIGHT){
-        Ristaus ristaus;
-        ristaus.kartalla.ykoord = nykysijainti.ykoord;
-        ristaus.kartalla.xkoord = nykysijainti.xkoord-1;
-        ristaus.right.tutkittu = true;
-        ristaus.right.jatkom = OPENING;
-        reitti.push_back(ristaus);
-//        for (auto rist : reitti){
-//            cout << "Risteys: " << rist.kartalla.ykoord << "," << rist.kartalla.xkoord << endl;
-//        }
-        return true;
-    }
-    return true;
-}
-
-//..oikealla
-bool tutkiRight(Sijainti nykysijainti, auto& reitti, LiikkumisSuunta prevDir){
-    int yindex = KORKEUS-1-nykysijainti.ykoord;
-    int xindex = nykysijainti.xkoord+1;
-    if (xindex > LEVEYS) return false; //ulos kartalta - ei mahdollista
-    if (labyrintti[yindex][xindex] == 1) return false;
-    //tulossa uuteen ristaukseen
-    if (labyrintti[yindex][xindex] == 2 && prevDir != LEFT){
-        Ristaus ristaus;
-        ristaus.kartalla.ykoord = nykysijainti.ykoord;
-        ristaus.kartalla.xkoord = nykysijainti.xkoord+1;
-        ristaus.left.tutkittu = true;
-        ristaus.left.jatkom = OPENING;
-        reitti.push_back(ristaus);
-//        for (auto rist : reitti){
-//            cout << "Risteys: " << rist.kartalla.ykoord << "," << rist.kartalla.xkoord << endl;
-//        }
-        return true;
-    }
-    return true;
-}
-
-//tämä funktio palauttaa aina seuraavan lähtösuunnan ilman lisäehtoja
-//OPISKELIJA: älä muuta tätä funktiota suoraan vaan tee omille mahdollisille lisäehdoille oma(t) funktio(t) loogisesti oikeisiin paikkoihin
-LiikkumisSuunta findNext(bool onkoRistaus, Sijainti nykysijainti, LiikkumisSuunta prevDir, auto& reitti){
-    if (!onkoRistaus) {        
-        if (tutkiLeft(nykysijainti, reitti, prevDir) && prevDir != RIGHT){
-        return LEFT;
-        }
-        if (tutkiUp(nykysijainti, reitti, prevDir) && prevDir != DOWN){
-        return UP;
-        }
-        if (tutkiDown(nykysijainti, reitti, prevDir) && prevDir != UP){
-        return DOWN;
-        }
-        if (tutkiRight(nykysijainti, reitti, prevDir) && prevDir != LEFT){
-        return RIGHT;
-        }
-        return DEFAULT; //UMPIKUJA - palaa viimeisimpään risteykseen returnin jälkeen
-    }
-    else if (onkoRistaus) {
-        if (tutkiLeft(nykysijainti, reitti, prevDir) && reitti.back().tutkittavana != LEFT && !reitti.back().left.tutkittu){
-        return LEFT;
-        }
-        if (tutkiUp(nykysijainti, reitti, prevDir) && reitti.back().tutkittavana != UP && !reitti.back().up.tutkittu){
-        return UP;
-        }
-        if (tutkiDown(nykysijainti, reitti, prevDir) && reitti.back().tutkittavana != DOWN && !reitti.back().down.tutkittu){
-        return DOWN;
-        }
-        if (tutkiRight(nykysijainti, reitti, prevDir) && reitti.back().tutkittavana != RIGHT && !reitti.back().right.tutkittu){
-        return RIGHT;
-        }
-        return DEFAULT; //palatun ristauksen kaikki suunnat käyty,return jälkeen risteyksen voi poistaa pinosta ja palata sitä edelliseen risteykseen
-    }
-}
-
-//näissä rotta liikkuu varsinaisesti eli sijainti päivitetään
-Sijainti moveUp(Sijainti nykysijainti){
-    nykysijainti.ykoord++;
-    return nykysijainti;
-}
-Sijainti moveDown(Sijainti nykysijainti){
-    nykysijainti.ykoord--;
-    return nykysijainti;
-}
-Sijainti moveLeft(Sijainti nykysijainti){
-    nykysijainti.xkoord--;
-    return nykysijainti;
-}
-Sijainti moveRight(Sijainti nykysijainti){
-    nykysijainti.xkoord++;
-    return nykysijainti;
-}
-
-//PasiM TODO:jatkokehitys:
-//toteuta funktiopointterivektorit
-//funktiopointterivektorilla voi tiivistää koodia melkoisesti
-
-//TÄRKEÄÄ
-//risteyskoodi alapuolella, eli tämä ajetaan silmukan alussa kun ollaan jo risteyksessä (eli liikuttu siihen edellisen silmukan lopussa)
-//OPISKELIJA: tästä kutsut tarvittavaan omaan lisättyyn logiikkaan (jos lisäehtoja/optimointia labyrintissa liikkumiselle)
-//back() viittaa vektorin viimeisimpään lisättyyn alkioon (=pinon päälle)
-//pop_back() poistaa viimeisimmän lisätyn alkion (=pinon päältä)
-//tutkittavana - attribuutti kertoo (jää muistiin risteyksestä) minne suuntaan risteyksestä nyt lähdettiinkään
-//palauttaa suunnan mihin risteyksestä lähdetään
-LiikkumisSuunta doRistaus(Sijainti risteyssijainti, LiikkumisSuunta prevDir, auto& reitti){
-    LiikkumisSuunta nextDir; 
-    nextDir = findNext(true, risteyssijainti, prevDir, reitti); 
-    //HUOM! päätös risteyksessä toimimisesta tehdään alla
-    //OPISKELIJA: voit vaikuttaa päätöksentekoon, lisää oma toiminnallisuus omaan funktioonsa
-    if (nextDir == LEFT) reitti.back().tutkittavana = LEFT;
-    else if (nextDir == UP) reitti.back().tutkittavana = UP;
-    else if (nextDir == RIGHT) reitti.back().tutkittavana = RIGHT;
-    else if (nextDir == DOWN) reitti.back().tutkittavana = DOWN;
-    else if (nextDir == DEFAULT) reitti.pop_back(); //kaikki suunnat oli jo tutkittu
-    return nextDir; //kertoo eteenpäin miten päätettiin toimia risteyksessä
-}
-/*
- * Tästä alkaa rotan matka labyrintissa - tätä kutsutaan niin prosessista kuin threadistä samalla tavalla
- * Pääsilmukka on yksi liikkumisvuoro: vuoro alkaa analysoinnista nykyisen sijainnin suhteen ja vuoro loppuu siirtymiseen uuteen sijaintiin
+/**
+ * Tulostaa labyrintin nykyisen tilan ja rottien sijainnit
+ * @param map_ptr Osoitin labyrinttiin tai sijaintikarttaan
+ * @param rat_id Rotan ID, joka on juuri liikkunut
  */
-
-//OPISKELIJA: erottele tarvittaessa koodi mitä ajetaan prosessitoteutuksessa ja mitä thread-toteutuksessa
-//OPISKELIJA: tarvitset siihen komentoriviltä annettavan parametrin mitä kuljetat sinne minne sitä tarvitaan
-
-//HUOM! olennaista on että kurssilla opeteltuja asioita on sovellettu (mahdollisimman yksinkertainen koodi toimii)
-//Siis kutsu alla olevaa niin forkatusta lapsesta kuin luodusta threadistä!
-//palauttaa yksittäisen rotan liikkujen määrän
-//parametrina tässä siis voi/pitää antaa esimerkiksi että ollaanko prosessina vai threadinä liikkeellä
-//kuljeta parametria/parametreja tarvittavissa paikoissa ohjelmassa
-//ohjelman lopussa reitti vektorissa (käsitellään pinona) on oikean reitin risteykset ainoastaan
-int aloitaRotta(){
-    int liikkuCount=0;
-    vector<Ristaus> reitti; //pinona käytettävä rotan kulkema reitti (pinossa kuljetut risteykset)
-    Sijainti rotanSijainti = findBegin(); //hae labyrintin alku
-    LiikkumisSuunta prevDir {DEFAULT}; //edellinen suunta:jottei kuljeta edestakaisin vahingossa
-    LiikkumisSuunta nextDir {DEFAULT}; //seuraava suunta
-    //pyöri labyrintissa kunnes ulostulo on löytynyt
-    while (labyrintti[KORKEUS-1-rotanSijainti.ykoord][rotanSijainti.xkoord] != 4) { //ulospääsyn löytymisehto
-//DEBUGAUSAPUJA..getpid() palauttaa ajajan
-//        pid_t prosessi = getpid();
-//        cout << "Olen prosessi: " << prosessi << endl;
-        //alla vaihtoehtoisesti n-kertainen for-loop testauksia varten
-        //    for (int i = 0 ; i < 50 ; i++){
-        //risteykset on labyrinttiin merkitty 2:lla ohjelmoinnin helpottamiseksi
-        //risteyksen tutkimiselle on oma koodi alla
-        if (labyrintti[KORKEUS-1-rotanSijainti.ykoord][rotanSijainti.xkoord] == 2){
-            nextDir = doRistaus(rotanSijainti, prevDir, reitti);
+void printLabyrinthStatus(int (*map_ptr)[LEVEYS], int rat_id) {
+    // Tällä hetkellä tulostetaan vain sijaintikartta
+    cout << "\n------------------------------------" << endl;
+    cout << "Rotta " << rat_id << " liikkui. Karttatilanne nyt:" << endl;
+    for (int y = 0; y < KORKEUS; y++) {
+        for (int x = 0; x < LEVEYS; x++) {
+            if (map_ptr[y][x] > 0) {
+                // Käytetään arvoa 'map_ptr[y][x]' merkitsemään rottaa tai seinää
+                if (map_ptr[y][x] == WALL) cout << "# "; // Seinä
+                else if (map_ptr[y][x] == EXIT) cout << "E "; // Maali
+                else if (map_ptr[y][x] == START) cout << "S "; // Alka
+                else cout << map_ptr[y][x] << " "; // Rottan ID
+            } else {
+                cout << ". "; // Vapaa polku
+            }
         }
-        //muuten tämä, eli "muu kuin risteys" koodi
-        else nextDir = findNext(false /* ei risteys */, rotanSijainti, prevDir, reitti);
-        //huom! nykyimplementaatiossa jos vuoron alussa (eli yläpuolisissa kutsuissa) liikkuminen on todettu mahdolliseksi se myös tullaan tekemään, muuta tätä tarvittaessa
-        //huom! jos on valittu risteykseenmeno niin ristaus on jo lisätty ristauspinoon tässä vaiheessa
-        //huom! päätökset on jo tehty, tässä on vain päätösten toimeenpano
-        switch (nextDir) {
-        case UP:
-        rotanSijainti = moveUp(rotanSijainti);
-        prevDir = UP;
-        break;
-        case DOWN:
-        rotanSijainti = moveDown(rotanSijainti);
-        prevDir = DOWN;
-        break;
-        case LEFT:
-        rotanSijainti = moveLeft(rotanSijainti);
-        prevDir = LEFT;
-        break;
-        case RIGHT:
-        rotanSijainti = moveRight(rotanSijainti);
-        prevDir = RIGHT;
-        break;
-        //jos on palautettu DEFAULT niin on joko kyse
-        //a)UMPIKUJASTA: (DEFAULT PALAUTETTU findNext() -> paluu edelliseen risteykseen
-        //b)AIEMMIN PALATTIIN JO RISTEYKSEEN JONKA KAIKKI SUUNNAT tutkittu-attribuutti true: (DEFAULT PALAUTETTU doRistaus() -> poista risteys pinosta ja palaa edelliseen risteykseen
-        case DEFAULT: //=paluu edelliseen risteykseen jossa käymättömiä reittejä
-        cout << "Umpikuja: " << "Ruutu: " << rotanSijainti.ykoord << "," << rotanSijainti.xkoord << endl; 
-        rotanSijainti.ykoord = reitti.back().kartalla.ykoord;
-        rotanSijainti.xkoord = reitti.back().kartalla.xkoord;
-        cout << "Palattu: " << "Ruutu: " << rotanSijainti.ykoord << "," << rotanSijainti.xkoord << endl;
-            switch (reitti.back().tutkittavana){
-            case UP:
-                reitti.back().up.tutkittu = true;
-                reitti.back().up.jatkom = OPENING;
-                break;
-            case DOWN:
-                reitti.back().down.tutkittu = true;
-                reitti.back().down.jatkom = OPENING;
-                break;
-            case LEFT:
-                reitti.back().left.tutkittu = true;
-                reitti.back().left.jatkom = OPENING;
-                break;
-
-            case RIGHT:
-                reitti.back().right.tutkittu = true;
-                reitti.back().right.jatkom = OPENING;
-                break;
-            default:
-            cout << "Ei pitäisi tapahtua! Joku ongelma jos tämä tulostus tulee!" << endl;
-            break;
-        } 
-        break;
+        cout << endl;
     }
-//DEBUGGAUSAPUJA
-    //    cout << "Rotan sijainti nyt: " << rotanSijainti.ykoord << "," << rotanSijainti.xkoord << endl;
-
-    //päivitetään liikkujen laskuri, tällä hetkellä yksi risteykseen paluu on yksi liikku
-    liikkuCount++;
-    //OPISKELIJA: päivitä rotan hengähtämistaukoa haluamallasi tavalla (se voi vaihdella eri rotilla)
-    usleep(10);
-} // for //while    
-    //ohjelman lopuksi palautetaan liikkujen määrä rottakohtaisesti
-    //OPISKELIJA: voisit muuttaa paluuarvon rakenteeksi jossa olisi liikkujen määrän lisäksi myös oikea reitti eli jäljelle jäänyt risteyspino, pystyt sitten käyttämään sitä prosesseissa tai säikeissä
-    return liikkuCount;
+    cout << "------------------------------------" << endl;
 }
 
-//OPISKELIJA: nykyinen main on näin yksinkertainen, tästä pitää muokata se rinnakkaisuuden pohja
-int main(){
-    aloitaRotta();
-    //tämän tulee kertoa että kaikki rotat ovat päässeet ulos labyrintista
-    //viimeinen jäädytetty kuva sijaintikartasta olisi hyvä olla todistamassa sitä
-    std::cout << "Kaikki rotat ulkona!" << endl;
+/**
+ * Rotan reitinetsintäalgoritmi prosessitoteutukselle.
+ * Päivittää sijaintikarttaa käyttäen semaforia (KOHTA 3).
+ */
+int aloitaRottaProsessit(int rat_id) {
+    RatData rotta;
+    rotta.id = rat_id;
+    rotta.liikeCount = 0;
+    rotta.rotanSijainti = {3, 1}; // Esimerkki lähtöpiste
+
+    rotta.reitti.push_back({{3, 1}, {}, {}, {}, {}, NONE}); // Aloitusristeys pinoon
+
+    // Function to check if a move is valid
+    auto isValidMove = [](int y, int x, int (*maze)[LEVEYS]) {
+        return y >= 0 && y < KORKEUS && x >= 0 && x < LEVEYS && maze[y][x] != WALL;
+    };
+
+    while (rotta.rotanSijainti.ykoord != EXIT || rotta.rotanSijainti.xkoord != EXIT) { // Korvaa EXIT-tarkistus todellisilla koordinaateilla
+
+        // ... Oikea poistumisehto vaatisi labyrintin tarkastelua
+        if (labyrintti[rotta.rotanSijainti.ykoord][rotta.rotanSijainti.xkoord] == EXIT) {
+            cout << "Rotta " << rotta.id << " löysi uloskäynnin! Liikkeitä: " << rotta.liikeCount << endl;
+            break; 
+        }
+
+        // Determine valid moves
+        vector<Coord> validMoves;
+        if (isValidMove(rotta.rotanSijainti.ykoord - 1, rotta.rotanSijainti.xkoord, labyrintti)) validMoves.push_back({rotta.rotanSijainti.ykoord - 1, rotta.rotanSijainti.xkoord});
+        if (isValidMove(rotta.rotanSijainti.ykoord + 1, rotta.rotanSijainti.xkoord, labyrintti)) validMoves.push_back({rotta.rotanSijainti.ykoord + 1, rotta.rotanSijainti.xkoord});
+        if (isValidMove(rotta.rotanSijainti.ykoord, rotta.rotanSijainti.xkoord - 1, labyrintti)) validMoves.push_back({rotta.rotanSijainti.ykoord, rotta.rotanSijainti.xkoord - 1});
+        if (isValidMove(rotta.rotanSijainti.ykoord, rotta.rotanSijainti.xkoord + 1, labyrintti)) validMoves.push_back({rotta.rotanSijainti.ykoord, rotta.rotanSijainti.xkoord + 1});
+
+        if (!validMoves.empty()) {
+            // Randomly select a valid move
+            Coord nextMove = validMoves[rand() % validMoves.size()];
+
+            // Update position
+            sijaintikarttaProsessit[rotta.rotanSijainti.ykoord][rotta.rotanSijainti.xkoord] = 0;
+            rotta.rotanSijainti = nextMove;
+            sijaintikarttaProsessit[rotta.rotanSijainti.ykoord][rotta.rotanSijainti.xkoord] = rotta.id;
+
+            printLabyrinthStatus(sijaintikarttaProsessit, rotta.id);
+        } else {
+            // Backtrack if no valid moves
+            if (!rotta.reitti.empty()) {
+                rotta.rotanSijainti = rotta.reitti.back().sijainti;
+                rotta.reitti.pop_back();
+            }
+        }
+
+        // KOHTA 3: P-operaatio (lukitus) ennen jaetun muistin kirjoitusta
+        if (semop(semid, &P, 1) == -1) {
+            perror("semop P-operation failed");
+            exit(1);
+        }
+
+        // Päivitetään rottien sijaintikartta (KOHTA 3)
+        // Aiempi sijainti nollataan ja uusi merkitään rotta.id:llä
+        sijaintikarttaProsessit[rotta.rotanSijainti.ykoord][rotta.rotanSijainti.xkoord] = 0; // Rotan vanha paikka
+        
+        // Esimerkkilukujen päivitys simuloimaan liikkumista
+        if (rand() % 4 == 0) rotta.rotanSijainti.xkoord++; // Liikuta rottaa esim. oikealle
+        if (rotta.rotanSijainti.xkoord >= LEVEYS) rotta.rotanSijainti.xkoord = LEVEYS - 1;
+
+        sijaintikarttaProsessit[rotta.rotanSijainti.ykoord][rotta.rotanSijainti.xkoord] = rotta.id; // Rotan uusi paikka
+
+        // Tulostetaan kartan tilanne (vain demoa varten, todellisuudessa lukitus on lyhyt)
+        printLabyrinthStatus(sijaintikarttaProsessit, rotta.id);
+
+        // KOHTA 3: V-operaatio (vapautus) kirjoituksen jälkeen
+        if (semop(semid, &V, 1) == -1) {
+            perror("semop V-operation failed");
+            exit(1);
+        }
+
+        rotta.liikeCount++;
+        usleep(100000); // 100ms tauko
+    }
+
+    // Irrota jaettu muisti lapsiprosessista (KOHTA 1)
+    if (shmdt(labyrintti) == -1) { perror("shmdt labyrintti failed"); }
+    if (shmdt(sijaintikarttaProsessit) == -1) { perror("shmdt sijaintikartta failed"); }
+
+    return rotta.liikeCount;
+}
+
+/**
+ * Rotan reitinetsintäalgoritmi säietoteutukselle.
+ * Päivittää sijaintikarttaa käyttäen mutex-lukkoa (KOHTA 4).
+ */
+void* aloitaRottaSaikeet(void* arg) {
+    RatData* rotta_ptr = (RatData*)arg;
+    int rat_id = rotta_ptr->id;
+    rotta_ptr->liikeCount = 0;
+    rotta_ptr->rotanSijainti = {3, 1}; // Esimerkki lähtöpiste
+
+    rotta_ptr->reitti.push_back({{3, 1}, {}, {}, {}, {}, NONE}); // Aloitusristeys pinoon
+
+    // Function to check if a move is valid
+    auto isValidMove = [](int y, int x, int (*maze)[LEVEYS]) {
+        return y >= 0 && y < KORKEUS && x >= 0 && x < LEVEYS && maze[y][x] != WALL;
+    };
+
+    while (rotta_ptr->rotanSijainti.ykoord != EXIT || rotta_ptr->rotanSijainti.xkoord != EXIT) { // Korvaa EXIT-tarkistus todellisilla koordinaateilla
+
+        // ... Oikea poistumisehto vaatisi labyrintin tarkastelua
+        if (labyrinttiSaikeet[rotta_ptr->rotanSijainti.ykoord][rotta_ptr->rotanSijainti.xkoord] == EXIT) {
+            cout << "Saie-Rotta " << rat_id << " löysi uloskäynnin! Liikkuja: " << rotta_ptr->liikeCount << endl;
+            break; 
+        }
+
+        // Determine valid moves
+        vector<Coord> validMoves;
+        if (isValidMove(rotta_ptr->rotanSijainti.ykoord - 1, rotta_ptr->rotanSijainti.xkoord, labyrinttiSaikeet)) validMoves.push_back({rotta_ptr->rotanSijainti.ykoord - 1, rotta_ptr->rotanSijainti.xkoord});
+        if (isValidMove(rotta_ptr->rotanSijainti.ykoord + 1, rotta_ptr->rotanSijainti.xkoord, labyrinttiSaikeet)) validMoves.push_back({rotta_ptr->rotanSijainti.ykoord + 1, rotta_ptr->rotanSijainti.xkoord});
+        if (isValidMove(rotta_ptr->rotanSijainti.ykoord, rotta_ptr->rotanSijainti.xkoord - 1, labyrinttiSaikeet)) validMoves.push_back({rotta_ptr->rotanSijainti.ykoord, rotta_ptr->rotanSijainti.xkoord - 1});
+        if (isValidMove(rotta_ptr->rotanSijainti.ykoord, rotta_ptr->rotanSijainti.xkoord + 1, labyrinttiSaikeet)) validMoves.push_back({rotta_ptr->rotanSijainti.ykoord, rotta_ptr->rotanSijainti.xkoord + 1});
+
+        if (!validMoves.empty()) {
+            // Randomly select a valid move
+            Coord nextMove = validMoves[rand() % validMoves.size()];
+
+            // Update position
+            pthread_mutex_lock(&sijainti_mutex);
+            sijaintikarttaSaikeet[rotta_ptr->rotanSijainti.ykoord][rotta_ptr->rotanSijainti.xkoord] = 0;
+            rotta_ptr->rotanSijainti = nextMove;
+            sijaintikarttaSaikeet[rotta_ptr->rotanSijainti.ykoord][rotta_ptr->rotanSijainti.xkoord] = rat_id;
+            pthread_mutex_unlock(&sijainti_mutex);
+
+            printLabyrinthStatus(sijaintikarttaSaikeet, rat_id);
+        } else {
+            // Backtrack if no valid moves
+            if (!rotta_ptr->reitti.empty()) {
+                rotta_ptr->rotanSijainti = rotta_ptr->reitti.back().sijainti;
+                rotta_ptr->reitti.pop_back();
+            }
+        }
+
+        rotta_ptr->liikeCount++;
+        usleep(100000); // 100ms tauko
+    }
+
+    return nullptr;
+}
+
+
+/**
+ * Pääajorutiini prosessitoteutukselle (KOHTA 1 & 3).
+ * Luo ja hallinnoi jaettua muistia ja semaforeja.
+ */
+void ajorutiiniProsessit() {
+    // Luodaan System V -avaimet jaetulle muistille ja semaforille
+    key_t shm_key_laby = ftok("labyrintti.txt", 'A');
+    key_t shm_key_map = ftok("sijaintikartta.txt", 'B');
+    key_t sem_key = ftok("semaphore.txt", 'C');
+    
+    // Esimerkkilabyrintti
+    int example[KORKEUS][LEVEYS] = {
+        {1,1,1,1,1,1,1},
+        {1,0,1,0,1,0,4},
+        {1,0,1,0,1,0,1},
+        {1,2,0,2,0,2,1},
+        {1,0,1,0,1,0,1},
+        {1,0,1,0,1,0,1},
+        {1,1,1,3,1,1,1}
+    };
+
+    // Luo ja kiinnitä jaettu muisti labyrintille
+    size_t laby_size = sizeof(int) * KORKEUS * LEVEYS;
+    int shmid_laby = shmget(shm_key_laby, laby_size, IPC_CREAT | 0666);
+    if (shmid_laby == -1) { perror("shmget labyrintti failed"); return; }
+    labyrintti = static_cast<int (*)[LEVEYS]>(shmat(shmid_laby, NULL, 0));
+    if (labyrintti == (void*)-1) { perror("shmat labyrintti failed"); return; }
+
+    for (int y = 0; y < KORKEUS; y++)
+        for (int x = 0; x < LEVEYS; x++)
+            labyrintti[y][x] = example[y][x];
+
+    // Luo ja kiinnitä jaettu muisti sijaintikartalle
+    size_t map_size = sizeof(int) * KORKEUS * LEVEYS;
+    int shmid_map = shmget(shm_key_map, map_size, IPC_CREAT | 0666);
+    if (shmid_map == -1) { perror("shmget sijaintikartta failed"); return; }
+    sijaintikarttaProsessit = static_cast<int (*)[LEVEYS]>(shmat(shmid_map, NULL, 0));
+    if (sijaintikarttaProsessit == (void*)-1) { perror("shmat sijaintikartta failed"); return; }
+
+    for (int y = 0; y < KORKEUS; y++)
+        for (int x = 0; x < LEVEYS; x++)
+            sijaintikarttaProsessit[y][x] = 0;
+
+    // Luo ja alustaa semafori
+    semid = semget(sem_key, 1, IPC_CREAT | 0666);
+    if (semid == -1) { perror("semget failed"); return; }
+    if (semctl(semid, 0, SETVAL, 1) == -1) { perror("semctl SETVAL failed"); return; }
+
+    // Luo lapsiprosessit
+    vector<pid_t> child_pids;
+    for (int i = 1; i <= ROTTIEN_LKM; i++) {
+        pid_t pid = fork();
+        if (pid == 0) {
+            cout << "Rotta " << i << " (PID: " << getpid() << ") aloittaa reitin etsinnän." << endl;
+            aloitaRottaProsessit(i); // Lapsiprosessi suorittaa algoritmin
+            // Lapsiprosessi irrottaa vain muistinsa
+            if (labyrintti) shmdt(labyrintti);
+            if (sijaintikarttaProsessit) shmdt(sijaintikarttaProsessit);
+            exit(0);
+        } else if (pid > 0) {
+            child_pids.push_back(pid);
+        } else {
+            perror("fork failed");
+            return;
+        }
+    }
+
+    // Odota lapsia
+    for (pid_t pid : child_pids) {
+        waitpid(pid, NULL, 0);
+        cout << "Vanhempiprosessi sai ilmoituksen lapsen (PID: " << pid << ") päättymisestä." << endl;
+    }
+
+    // Vanhempiprosessi siivoaa jaetun muistin ja semaforin
+    cout << "Kaikki rotat ovat valmiit. Siivotaan jaettu muisti ja semafori." << endl;
+
+    if (labyrintti) {
+        if (shmdt(labyrintti) == -1) perror("shmdt labyrintti failed");
+        if (shmctl(shmid_laby, IPC_RMID, NULL) == -1) perror("shmctl IPC_RMID labyrintti failed");
+    }
+
+    if (sijaintikarttaProsessit) {
+        if (shmdt(sijaintikarttaProsessit) == -1) perror("shmdt sijaintikartta failed");
+        if (shmctl(shmid_map, IPC_RMID, NULL) == -1) perror("shmctl IPC_RMID sijaintikartta failed");
+    }
+
+    if (semid != -1) {
+        if (semctl(semid, 0, IPC_RMID) == -1) perror("semctl IPC_RMID failed");
+    }
+
+    cout << "Prosessitoteutus valmis." << endl;
+}
+
+/**
+ * Pääajorutiini säietoteutukselle (KOHTA 2 & 4).
+ * Hallinnoi säikeitä ja mutex-lukkoa.
+ */
+void ajorutiiniSaikeet() {
+    // **Alustetaan mutex-lukko (KOHTA 4)**
+    if (pthread_mutex_init(&sijainti_mutex, NULL) != 0) {
+        cout << "\nMutex init failed\n";
+        return;
+    }
+
+    // **Alustetaan labyrintti ja sijaintikartta (KOHTA 2 & 4)**
+    int example[KORKEUS][LEVEYS] = {
+        {1,1,1,1,1,1,1},
+        {1,0,1,0,1,0,4},
+        {1,0,1,0,1,0,1},
+        {1,2,0,2,0,2,1},
+        {1,0,1,0,1,0,1},
+        {1,0,1,0,1,0,1},
+        {1,1,1,3,1,1,1}
+    };
+    for (int y = 0; y < KORKEUS; y++) {
+        for (int x = 0; x < LEVEYS; x++) {
+            labyrinttiSaikeet[y][x] = example[y][x];
+            sijaintikarttaSaikeet[y][x] = 0;
+        }
+    }
+
+    pthread_t rotat[ROTTIEN_LKM];
+    RatData rottaData[ROTTIEN_LKM];
+    
+    // **Luodaan säikeet (KOHTA 2)**
+    for (int i = 0; i < ROTTIEN_LKM; i++) {
+        rottaData[i].id = i + 1;
+        cout << "Saie-Rotta " << i + 1 << " aloittaa reitin etsinnän." << endl;
+        // Säikeet käyttävät samaa muistiavaruutta (labyrinttiSaikeet, sijaintikarttaSaikeet)
+        if (pthread_create(&rotat[i], NULL, aloitaRottaSaikeet, (void*)&rottaData[i]) != 0) {
+            perror("pthread_create failed");
+            return;
+        }
+    }
+
+    // **main() -säie odottaa rottasäikeitä (KOHTA 2)**
+    for (int i = 0; i < ROTTIEN_LKM; i++) {
+        pthread_join(rotat[i], NULL); 
+        cout << "main()-säie sai ilmoituksen säikeen (Rotta " << i + 1 << ") päättymisestä." << endl;
+    }
+
+    // **Mutexin siivous (KOHTA 4)**
+    pthread_mutex_destroy(&sijainti_mutex);
+
+    cout << "Säietoteutus valmis." << endl;
+}
+
+//OPISKELIJA: nykyinen main on näin yksinkertainen, tästä pitää muokata se rinnakkainen main
+int main(int argc, char* argv[]) {
+    srand(time(0));
+    cout << "Harjoitus 2: Rotta Labyrintissa" << endl;
+    
+    // Voit valita, kumman toteutuksen ajat.
+    // **KOMMENTOI TOINEN ALLA OLEVA RIVI POIS KÄYTÖSTÄ.**
+    
+     // ajorutiiniProsessit(); // **Ajaa kohdat 1 ja 3**
+     ajorutiiniSaikeet(); // **Ajaa kohdat 2 ja 4**
+
     return 0;
 }
