@@ -10,7 +10,9 @@
 
 
 
-/* PERUSASIAT SUORITETTU (8p?) */
+/* PERUSASIAT SUORITETTU (8p?) 
+https://github.com/Arttupirila/ASDT-Harjoitus2.git
+*/
 
 
 
